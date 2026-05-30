@@ -1,0 +1,287 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  STORE_OWNER
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  READY
+  COLLECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum CancellationStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  password     String
+  name         String
+  role         Role      @default(USER)
+  hostel       String?
+  warningCount Int       @default(0)
+  isBlocked    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  store                 Store?
+  bookings              Booking[]
+  storeOwnerRequest     StoreOwnerRequest?
+  cancellationRequests  CancellationRequest[]
+  warnings              Warning[]
+  blockedStores         BlockedUser[]
+  emailPreferences      EmailPreference?
+  couponUsages          CouponUsage[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Store {
+  id           String    @id @default(uuid())
+  name         String
+  description  String?
+  hostel       String
+  roomNumber   String
+  image        String?
+  isActive     Boolean   @default(true)
+  ownerId      String    @unique
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  owner                 User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items                 Item[]
+  bookings              Booking[]
+  campaigns             Campaign[]
+  blockedUsers          BlockedUser[]
+
+  @@index([hostel])
+  @@index([isActive])
+}
+
+
+model Item {
+  id           String    @id @default(uuid())
+  storeId      String
+  name         String
+  description  String?
+  price        Float
+  quantity     Int
+  image        String?
+  isAvailable  Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  store                 Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  bookingItems          BookingItem[]
+  
+  @@index([storeId])
+  @@index([isAvailable])
+}
+
+
+model Booking {
+  id                   String    @id @default(uuid())
+  userId               String
+  storeId              String
+  total                Float
+  status               BookingStatus  @default(PENDING)
+  couponCode           String?
+  discount             Float          @default(0)
+  collectionDeadline   DateTime
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store                 Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items                 BookingItem[]
+  cancellationRequest   CancellationRequest?
+    
+  @@index([userId])
+  @@index([storeId])
+  @@index([status])
+  @@index([collectionDeadline])
+}
+
+
+model BookingItem {
+  id                   String    @id @default(uuid())
+  bookingId            String
+  itemId               String
+  name                 String
+  price                Float
+  quantity             Int
+
+  booking              Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  item                 Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+    
+  @@index([bookingId])
+
+}
+
+
+model CancellationRequest {
+  id                   String             @id @default(uuid())
+  bookingId            String             @unique
+  userId               String
+  reason               String?
+  total                Float
+  status               CancellationStatus  @default(REQUESTED)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  booking               Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user                  User           @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+
+model Campaign {
+  id                   String    @id @default(uuid())
+  storeId              String
+  name                 String
+  description          String?
+  couponCode           String         @unique
+  discountType         DiscountType
+  discountValue        Float
+  minOrderValue        Float?
+  maxUsageCount        Int?
+  maxUsagePerUser      Int?
+  usageCount           Int            @default(0)
+  startDate            DateTime
+  endDate              DateTime
+  isActive             Boolean        @default(false)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  store                 Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  couponUsages          CouponUsage[]
+      
+  @@index([storeId])
+  @@index([couponCode])
+  @@index([isActive])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+
+model CouponUsage {
+  id                   String    @id @default(uuid())
+  campaignId           String
+  userId               String
+  bookingId            String?
+  usedAt               DateTime       @default(now())
+
+  campaign             Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user                 User           @relation(fields: [userId], references: [id])
+
+  @@index([campaignId, userId])
+}
+
+
+model Warning {
+  id                   String        @id @default(uuid())
+  userId               String
+  reason               String
+  createdAt            DateTime       @default(now())
+  
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    
+  @@index([userId])
+
+}
+
+
+model BlockedUser {
+  id                   String    @id @default(uuid())
+  userId               String
+  storeId              String?
+  reason               String?
+  isGlobal             Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store                Store?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId])
+  @@index([userId])
+  @@index([storeId])
+
+}
+
+
+model StoreOwnerRequest {
+  id                   String    @id @default(uuid())
+  userId               String    @unique
+  storeName            String
+  hostel               String
+  roomNumber           String
+  status               String   @default("pending")
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+
+}
+
+
+model EmailPreference {
+  id                      String    @id @default(uuid())
+  userId                  String    @unique
+  bookingNotifications    Boolean   @default(true)
+  promotionalAlerts       Boolean   @default(true)
+  newStoreNotifications   Boolean   @default(true)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
